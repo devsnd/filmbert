@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import stat
 from io import BytesIO
 from typing import List
 
@@ -8,8 +9,9 @@ import aiofiles
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.datastructures import Headers
-from starlette.responses import Response, FileResponse, StreamingResponse
+from starlette.datastructures import Headers, URL
+from starlette.responses import Response, FileResponse, StreamingResponse, PlainTextResponse, \
+    RedirectResponse
 from starlette.staticfiles import NotModifiedResponse
 from starlette.types import Scope
 
@@ -18,7 +20,7 @@ app = FastAPI()
 class StreamedStaticFiles(StaticFiles):
     default_chunk_size = 1000 * 1024
 
-    def file_response(
+    async def file_response(
             self,
             full_path: str,
             stat_result: os.stat_result,
@@ -45,9 +47,9 @@ class StreamedStaticFiles(StaticFiles):
                     if requested_chunk_size < chunk_size:
                         chunk_size = requested_chunk_size
 
-        with open(full_path, mode="rb") as fh:
-            fh.seek(req_start_bytes)
-            file_bytes = fh.read(chunk_size)
+        async with aiofiles.open(full_path, mode="rb") as fh:
+            await fh.seek(req_start_bytes)
+            file_bytes = await fh.read(chunk_size)
             b = BytesIO(file_bytes)
             num_bytes_read = len(file_bytes)
 
@@ -60,6 +62,42 @@ class StreamedStaticFiles(StaticFiles):
         }
         # print(response_headers)
         return StreamingResponse(b, media_type="video/mp4", status_code=206, headers=response_headers)
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        """
+        Returns an HTTP response, given the incoming path, method and request headers.
+        """
+        if scope["method"] not in ("GET", "HEAD"):
+            return PlainTextResponse("Method Not Allowed", status_code=405)
+
+        full_path, stat_result = await self.lookup_path(path)
+
+        if stat_result and stat.S_ISREG(stat_result.st_mode):
+            # We have a static file to serve.
+            return await self.file_response(full_path, stat_result, scope)
+
+        elif stat_result and stat.S_ISDIR(stat_result.st_mode) and self.html:
+            # We're in HTML mode, and have got a directory URL.
+            # Check if we have 'index.html' file to serve.
+            index_path = os.path.join(path, "index.html")
+            full_path, stat_result = await self.lookup_path(index_path)
+            if stat_result is not None and stat.S_ISREG(stat_result.st_mode):
+                if not scope["path"].endswith("/"):
+                    # Directory URLs should redirect to always end in "/".
+                    url = URL(scope=scope)
+                    url = url.replace(path=url.path + "/")
+                    return RedirectResponse(url=url)
+                return await self.file_response(full_path, stat_result, scope)
+
+        if self.html:
+            # Check for '404.html' if we're in HTML mode.
+            full_path, stat_result = await self.lookup_path("404.html")
+            if stat_result is not None and stat.S_ISREG(stat_result.st_mode):
+                return await self.file_response(
+                    full_path, stat_result, scope, status_code=404
+                )
+
+        return PlainTextResponse("Not Found", status_code=404)
 
 app.mount("/static", StreamedStaticFiles(directory="static"), name="static")
 

@@ -13,13 +13,82 @@
         .showonhover:hover{
             opacity: 1;
         }
+
+
+        #video-container {
+            width: 640px;
+            height: 365px;
+            position: relative;
+        }
+
+        #video-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 5px;
+            opacity: 1;
+            z-index: 10;
+            -webkit-transition: opacity .3s;
+            -moz-transition: opacity .3s;
+            -o-transition: opacity .3s;
+            -ms-transition: opacity .3s;
+            transition: opacity .3s;
+            background-image: linear-gradient(bottom, rgb(3,113,168) 13%, rgb(0,136,204) 100%);
+            background-image: -o-linear-gradient(bottom, rgb(3,113,168) 13%, rgb(0,136,204) 100%);
+            background-image: -moz-linear-gradient(bottom, rgb(3,113,168) 13%, rgb(0,136,204) 100%);
+            background-image: -webkit-linear-gradient(bottom, rgb(3,113,168) 13%, rgb(0,136,204) 100%);
+            background-image: -ms-linear-gradient(bottom, rgb(3,113,168) 13%, rgb(0,136,204) 100%);
+
+            background-image: -webkit-gradient(
+                    linear,
+                    left bottom,
+                    left top,
+                    color-stop(0.13, rgb(3,113,168)),
+                    color-stop(1, rgb(0,136,204))
+            );
+        }
+
+        #video-container:hover #video-controls {
+            opacity: .9;
+        }
+
+        button {
+            background: rgba(0,0,0,.5);
+            border: 0;
+            color: #EEE;
+            -webkit-border-radius: 3px;
+            -moz-border-radius: 3px;
+            -o-border-radius: 3px;
+            border-radius: 3px;
+        }
+
+        button:hover {
+            cursor: pointer;
+        }
+
+        #seek-bar {
+            width: 360px;
+        }
+
+        #volume-bar {
+            width: 60px;
+        }
     </style>
 </head>
 <body>
 <span style="display: none;">Your ID: <span id="ws-id"></span></span>
-<video controls autobuffer loop id="video" width="100%">
-    <source src="/static/movie.low.mp4" type="video/mp4" />
+<video autobuffer id="video" width="100%" muted> <!-- mute video to allow autoplay -->
+    <source src="/static/movie.mp4" type="video/mp4" />
 </video>
+<!-- Video Controls -->
+<div id="video-controls">
+    <button type="button" id="play-pause" class="play">&#9654;</button>
+    <input type="range" id="seek-bar" value="0">
+    <button type="button" id="mute">Mute</button>
+    <input type="range" id="volume-bar" min="0" max="1" step="0.1" value="1">
+    <button type="button" id="full-screen">Full-Screen</button>
+</div>
 <form action="" onsubmit="seekTo(event)" class="showonhover">
     <input type="text" id="seekPosition" autocomplete="off"/>
     <button>Jump to</button>
@@ -28,21 +97,15 @@
   var client_id = Date.now();
   let videoElem = null;
   document.querySelector("#ws-id").textContent = client_id;
-  var ws = new WebSocket(`ws:///ws/${client_id}`);
-  const seekTo = (event) => {
-    const position = parseFloat(document.querySelector('#seekPosition').value);
-    document.querySelector('#video').currentTime = position;
-    ws.send(JSON.stringify({action: 'seekto', currentTime: position}));
-    event.preventDefault();
-    return false;
-  }
+  var ws = new WebSocket(`ws://${location.host}/ws/${client_id}`);
+
   ws.onmessage = function(event) {
     message = JSON.parse(event.data);
     console.log(message);
-    if (message.client_id === client_id) {
-      console.log('ignoring own message');
-      return;
-    }
+    // if (message.client_id === client_id) {
+    //   console.log('ignoring own message');
+    //   return;
+    // }
     // message from another client
     if (videoElem === null) {
       alert('got message, but video player not initialized!');
@@ -53,25 +116,131 @@
       videoElem.play();
     }
     if (message.data.action === 'seekto') {
+      const {pauseAfterSeek} = message.data;
+
       videoElem.currentTime = message.data.currentTime;
+      if (pauseAfterSeek) {
+        videoElem.pause();
+      } else {
+        videoElem.play();
+      }
     }
     if (message.data.action === 'pause') {
       videoElem.pause();
     }
   };
+
+  const sendMsg = (action, data = {}) => ws.send(JSON.stringify({action, currentTime: videoElem.currentTime, ...data}));
+  const sendPause = () => sendMsg('pause');
+  const sendPlay = () => sendMsg('play');
+  const sendSeekTo = (position, pauseAfterSeek) => sendMsg('seekto', {currentTime: position, pauseAfterSeek});
+
   window.onload = function() {
     videoElem = document.querySelector('#video');
-    videoElem.addEventListener('timeupdate', (event) => {
-      document.querySelector('#seekPosition').value = videoElem.currentTime;
+
+    // hook up video player controls
+    // we cannot use the internal controls, since we cannot hook up any click
+    // handlers to them, but we need them for the remote control
+
+    // Video
+    const video = document.getElementById("video");
+
+    // Buttons
+    const playButton = document.getElementById("play-pause");
+    const muteButton = document.getElementById("mute");
+    const fullScreenButton = document.getElementById("full-screen");
+
+    // Sliders
+    const seekBar = document.getElementById("seek-bar");
+    const volumeBar = document.getElementById("volume-bar");
+
+    window.setInterval(() => {
+      if (video.paused === true) {
+        playButton.innerHTML = "&#9654;";
+      } else {
+        playButton.innerHTML = "&#9208;";
+      }
+    }, 500);
+
+    const togglePlayPause = () => {
+      if (video.paused === true) {
+        sendPlay();
+      } else {
+        sendPause();
+      }
+    }
+
+    // Event listener for the play/pause button
+    playButton.addEventListener("click", togglePlayPause);
+    video.addEventListener("click", togglePlayPause);
+
+
+    // Event listener for the mute button
+    muteButton.addEventListener("click", function() {
+      if (video.muted === false) {
+        // Mute the video
+        video.muted = true;
+
+        // Update the button text
+        muteButton.innerHTML = "Unmute";
+      } else {
+        // Unmute the video
+        video.muted = false;
+
+        // Update the button text
+        muteButton.innerHTML = "Mute";
+      }
     });
-    videoElem.addEventListener('pause', (event) => {
-      ws.send(JSON.stringify({action: 'pause', currentTime: videoElem.currentTime}));
+
+
+    // Event listener for the full-screen button
+    fullScreenButton.addEventListener("click", function() {
+      if (video.requestFullscreen) {
+        video.requestFullscreen();
+      } else if (video.mozRequestFullScreen) {
+        video.mozRequestFullScreen(); // Firefox
+      } else if (video.webkitRequestFullscreen) {
+        video.webkitRequestFullscreen(); // Chrome and Safari
+      }
     });
-    videoElem.addEventListener('play', (event) => {
-      ws.send(JSON.stringify({action: 'play', currentTime: videoElem.currentTime}));
+
+
+    // Event listener for the seek bar
+    seekBar.addEventListener("change", function() {
+      video.currentTime = video.duration * (seekBar.value / 100);
     });
-    videoElem.addEventListener('seeked', (event) => {
-      ws.send(JSON.stringify({action: 'seeked', currentTime: videoElem.currentTime}));
+
+    let wasPausedBeforeSeek = false;
+    let seeking = false;
+
+    // Update the seek bar as the video plays
+    video.addEventListener("timeupdate", function() {
+      if (!seeking) {
+        seekBar.value = (100 / video.duration) * video.currentTime;
+      }
+    });
+
+    // Pause the video when the seek handle is being dragged
+    seekBar.addEventListener("mousedown", function() {
+      seeking = true;
+      wasPausedBeforeSeek = video.paused;
+      video.pause();
+    });
+
+    // Play the video when the seek handle is dropped
+    seekBar.addEventListener("mouseup", function() {
+      // if (!wasPausedBeforeSeek) {
+      //   video.play();
+      //   sendPlay();
+      // }
+      sendSeekTo(video.duration * (seekBar.value / 100), wasPausedBeforeSeek);
+      seeking = false;
+    });
+
+    // Event listener for the volume bar
+    volumeBar.addEventListener("change", function() {
+      // Update the video volume
+      video.volume = volumeBar.value;
     });
   }
 </script>
