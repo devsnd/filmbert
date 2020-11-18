@@ -4,6 +4,7 @@ import re
 from io import BytesIO
 from typing import List
 
+import aiofiles
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,6 +16,8 @@ from starlette.types import Scope
 app = FastAPI()
 
 class StreamedStaticFiles(StaticFiles):
+    default_chunk_size = 1000 * 1024
+
     def file_response(
             self,
             full_path: str,
@@ -24,116 +27,41 @@ class StreamedStaticFiles(StaticFiles):
     ) -> Response:
         method = scope["method"]
         request_headers = Headers(scope=scope)
-        # print(request_headers)
-        # print(stat_result.st_size)
         file_size = stat_result.st_size
         range_request = request_headers.get('range')
-        range_match = re.match('bytes=(\d+)-(\d*)', range_request)
-        default_chunk_size = 1000 * 1024
+
         req_start_bytes = 0
-        if range_match:
-            req_start_bytes = int(range_match.group(1))
-            req_end_bytes = range_match.group(2)
-            if req_end_bytes:
-                req_end_bytes = int(req_end_bytes)
-            # print(f'asked {req_start_bytes} - {req_end_bytes}')
+        chunk_size = self.default_chunk_size
+
+        if range_request:
+            range_match = re.match('bytes=(\d+)-(\d*)', range_request)
+            if range_match:
+                req_start_bytes = int(range_match.group(1))
+                req_end_bytes = range_match.group(2)
+                if req_end_bytes:
+                    req_end_bytes = int(req_end_bytes)
+                    # reduce chunk size if it's smaller than the default chunk size
+                    requested_chunk_size = req_end_bytes - req_start_bytes
+                    if requested_chunk_size < chunk_size:
+                        chunk_size = requested_chunk_size
 
         with open(full_path, mode="rb") as fh:
             fh.seek(req_start_bytes)
-            file_bytes = fh.read(default_chunk_size)
+            file_bytes = fh.read(chunk_size)
             b = BytesIO(file_bytes)
+            num_bytes_read = len(file_bytes)
 
-        end_bytes = req_start_bytes + len(file_bytes)
+        # calculate actual chunk size read from disk
+        end_bytes = req_start_bytes + num_bytes_read
         response_headers = {
             "Accept-Ranges": "bytes",
-            "Content-Length": str(len(file_bytes)),
+            "Content-Length": str(num_bytes_read),
             "Content-Range": F"bytes {req_start_bytes}-{end_bytes-1}/{file_size}",
         }
         # print(response_headers)
         return StreamingResponse(b, media_type="video/mp4", status_code=206, headers=response_headers)
 
 app.mount("/static", StreamedStaticFiles(directory="static"), name="static")
-
-html = """
-<!DOCTYPE html>
-<html>
-    <head>
-        <title>Chat</title>
-        <style>
-            html, body { 
-                background-color: black;
-            }
-            .showonhover {
-                opacity: 0;
-            }
-            .showonhover:hover{
-                opacity: 1;
-            }
-        </style>
-    </head>
-    <body>
-        <span style="display: none;">Your ID: <span id="ws-id"></span></span>
-        <video controls autobuffer loop id="video" width="100%">
-            <source src="/static/movie.low.mp4" type="video/mp4" />
-        </video>
-        <form action="" onsubmit="seekTo(event)" class="showonhover">
-            <input type="text" id="seekPosition" autocomplete="off"/>
-            <button>Jump to</button>
-        </form>
-        <script>
-            var client_id = Date.now();
-            let videoElem = null;
-            document.querySelector("#ws-id").textContent = client_id;
-            var ws = new WebSocket(`ws:///ws/${client_id}`);
-            const seekTo = (event) => {
-                const position = parseFloat(document.querySelector('#seekPosition').value);
-                document.querySelector('#video').currentTime = position;
-                ws.send(JSON.stringify({action: 'seekto', currentTime: position}));
-                event.preventDefault();
-                return false;
-            }
-            ws.onmessage = function(event) {
-                message = JSON.parse(event.data);
-                console.log(message);
-                if (message.client_id === client_id) {
-                    console.log('ignoring own message');
-                    return;
-                }
-                // message from another client
-                if (videoElem === null) {
-                    alert('got message, but video player not initialized!');
-                    return;
-                }
-
-                if (message.data.action === 'play') {
-                    videoElem.play();
-                }
-                if (message.data.action === 'seekto') {
-                    videoElem.currentTime = message.data.currentTime;
-                }
-                if (message.data.action === 'pause') {
-                    videoElem.pause();
-                }
-            };
-            window.onload = function() {
-                videoElem = document.querySelector('#video');
-                videoElem.addEventListener('timeupdate', (event) => {
-                    document.querySelector('#seekPosition').value = videoElem.currentTime;
-                });
-                videoElem.addEventListener('pause', (event) => {
-                    ws.send(JSON.stringify({action: 'pause', currentTime: videoElem.currentTime})); 
-                }); 
-                videoElem.addEventListener('play', (event) => {
-                    ws.send(JSON.stringify({action: 'play', currentTime: videoElem.currentTime})); 
-                });
-                videoElem.addEventListener('seeked', (event) => {
-                    ws.send(JSON.stringify({action: 'seeked', currentTime: videoElem.currentTime}));
-                });
-            }
-        </script>
-    </body>
-</html>
-"""
 
 
 class ConnectionManager:
@@ -160,9 +88,12 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+html_index_file = os.path.join(os.path.dirname(__file__), 'index.html')
 
 @app.get("/")
 async def get():
+    async with aiofiles.open(html_index_file) as fh:
+        html = await fh.read()
     return HTMLResponse(html)
 
 

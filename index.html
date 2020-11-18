@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <style>
+        html, body {
+            background-color: black;
+        }
+        .showonhover {
+            opacity: 0;
+        }
+        .showonhover:hover{
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+<span style="display: none;">Your ID: <span id="ws-id"></span></span>
+<video controls autobuffer loop id="video" width="100%">
+    <source src="/static/movie.low.mp4" type="video/mp4" />
+</video>
+<form action="" onsubmit="seekTo(event)" class="showonhover">
+    <input type="text" id="seekPosition" autocomplete="off"/>
+    <button>Jump to</button>
+</form>
+<script>
+  var client_id = Date.now();
+  let videoElem = null;
+  document.querySelector("#ws-id").textContent = client_id;
+  var ws = new WebSocket(`ws:///ws/${client_id}`);
+  const seekTo = (event) => {
+    const position = parseFloat(document.querySelector('#seekPosition').value);
+    document.querySelector('#video').currentTime = position;
+    ws.send(JSON.stringify({action: 'seekto', currentTime: position}));
+    event.preventDefault();
+    return false;
+  }
+  ws.onmessage = function(event) {
+    message = JSON.parse(event.data);
+    console.log(message);
+    if (message.client_id === client_id) {
+      console.log('ignoring own message');
+      return;
+    }
+    // message from another client
+    if (videoElem === null) {
+      alert('got message, but video player not initialized!');
+      return;
+    }
+
+    if (message.data.action === 'play') {
+      videoElem.play();
+    }
+    if (message.data.action === 'seekto') {
+      videoElem.currentTime = message.data.currentTime;
+    }
+    if (message.data.action === 'pause') {
+      videoElem.pause();
+    }
+  };
+  window.onload = function() {
+    videoElem = document.querySelector('#video');
+    videoElem.addEventListener('timeupdate', (event) => {
+      document.querySelector('#seekPosition').value = videoElem.currentTime;
+    });
+    videoElem.addEventListener('pause', (event) => {
+      ws.send(JSON.stringify({action: 'pause', currentTime: videoElem.currentTime}));
+    });
+    videoElem.addEventListener('play', (event) => {
+      ws.send(JSON.stringify({action: 'play', currentTime: videoElem.currentTime}));
+    });
+    videoElem.addEventListener('seeked', (event) => {
+      ws.send(JSON.stringify({action: 'seeked', currentTime: videoElem.currentTime}));
+    });
+  }
+</script>
+</body>
+</html>
