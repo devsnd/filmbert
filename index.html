@@ -22,7 +22,7 @@
         }
 
         #video-controls {
-            position: absolute;
+            position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
@@ -34,25 +34,28 @@
             -o-transition: opacity .3s;
             -ms-transition: opacity .3s;
             transition: opacity .3s;
-            background-image: linear-gradient(bottom, rgb(3,113,168) 13%, rgb(0,136,204) 100%);
-            background-image: -o-linear-gradient(bottom, rgb(3,113,168) 13%, rgb(0,136,204) 100%);
-            background-image: -moz-linear-gradient(bottom, rgb(3,113,168) 13%, rgb(0,136,204) 100%);
-            background-image: -webkit-linear-gradient(bottom, rgb(3,113,168) 13%, rgb(0,136,204) 100%);
-            background-image: -ms-linear-gradient(bottom, rgb(3,113,168) 13%, rgb(0,136,204) 100%);
+            background-image: linear-gradient(bottom, rgb(30,30,30) 13%, rgb(50,50,50) 100%);
+            background-image: -o-linear-gradient(bottom, rgb(30,30,30) 13%, rgb(50,50,50) 100%);
+            background-image: -moz-linear-gradient(bottom, rgb(30,30,30) 13%, rgb(50,50,50) 100%);
+            background-image: -webkit-linear-gradient(bottom, rgb(30,30,30) 13%, rgb(50,50,50) 100%);
+            background-image: -ms-linear-gradient(bottom, rgb(30,30,30) 13%, rgb(50,50,50) 100%);
 
             background-image: -webkit-gradient(
                     linear,
                     left bottom,
                     left top,
-                    color-stop(0.13, rgb(3,113,168)),
-                    color-stop(1, rgb(0,136,204))
+                    color-stop(0.13, rgb(30,30,30)),
+                    color-stop(1, rgb(50,50,50))
             );
         }
 
         #video-container:hover #video-controls {
             opacity: .9;
         }
-
+        .ctrl-button {
+            position: relative;
+            top: -6px;
+        }
         button {
             background: rgba(0,0,0,.5);
             border: 0;
@@ -68,11 +71,19 @@
         }
 
         #seek-bar {
-            width: 360px;
+            width: 100%;
         }
 
         #volume-bar {
             width: 60px;
+        }
+
+        #time-display {
+            color: #aaa;
+            font-size: 10px;
+            font-family: monospace;
+            line-height: 10px;
+
         }
     </style>
 </head>
@@ -83,11 +94,28 @@
 </video>
 <!-- Video Controls -->
 <div id="video-controls">
-    <button type="button" id="play-pause" class="play">&#9654;</button>
-    <input type="range" id="seek-bar" value="0">
-    <button type="button" id="mute">Mute</button>
-    <input type="range" id="volume-bar" min="0" max="1" step="0.1" value="1">
-    <button type="button" id="full-screen">Full-Screen</button>
+    <table width="100%">
+        <tr width="100%">
+            <td width="40">
+                <button type="button" id="play-pause" class="play ctrl-button">&#9654;</button>
+            </td>
+            <td width="*">
+                <input type="range" id="seek-bar" value="0">
+            </td>
+            <td width="60">
+                <span id="time-display">0:00:00 / 0:00:00</span>
+            </td>
+            <td width="40">
+                <button type="button" id="mute" class="ctrl-button">Mute</button>
+            </td>
+            <td width="40">
+                <input type="range" id="volume-bar" min="0" max="1" step="0.1" value="1">
+            </td>
+            <td width="40">
+                <button type="button" id="full-screen" class="ctrl-button">Full-Screen</button>
+            </td>
+        </tr>
+    </table>
 </div>
 <form action="" onsubmit="seekTo(event)" class="showonhover">
     <input type="text" id="seekPosition" autocomplete="off"/>
@@ -153,6 +181,7 @@
     // Sliders
     const seekBar = document.getElementById("seek-bar");
     const volumeBar = document.getElementById("volume-bar");
+    const timeDisplay = document.getElementById("time-display");
 
     window.setInterval(() => {
       if (video.paused === true) {
@@ -213,10 +242,18 @@
     let wasPausedBeforeSeek = false;
     let seeking = false;
 
+    const prettyTime = (totalSeconds) => {
+      const hours = Math.floor((totalSeconds / 3600)) % 60;
+      const minutes = Math.floor((totalSeconds / 60)) % 60;
+      const seconds = Math.floor(totalSeconds) % 60;
+      return `${hours}:${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds}`
+    }
+
     // Update the seek bar as the video plays
     video.addEventListener("timeupdate", function() {
       if (!seeking) {
         seekBar.value = (100 / video.duration) * video.currentTime;
+        timeDisplay.innerHTML = prettyTime(video.currentTime) + ' / ' + prettyTime(video.duration);
       }
     });
 
