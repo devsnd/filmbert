@@ -85,9 +85,31 @@
             line-height: 10px;
 
         }
+        .overlay {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: #333;
+            z-index: 100;
+            color: #ddd;
+            font-family: monospace;
+            text-align: center;
+            padding-top: 200px;
+        }
+
     </style>
 </head>
 <body>
+<div class="overlay loading-screen">
+    &#8987; Loading Moviebert...
+</div>
+<div class="overlay user-name-screen" style="display: none; opacity: 0.8;">
+    Please enter your name:<br>
+    <input type="text" id="userNameField"><br>
+    <button  type="button" onclick="setUserName()">Ok</button>
+</div>
 <span style="display: none;">Your ID: <span id="ws-id"></span></span>
 <video autobuffer id="video" width="100%" muted> <!-- mute video to allow autoplay -->
     <source src="/static/movie.mp4" type="video/mp4" />
@@ -106,7 +128,7 @@
                 <span id="time-display">0:00:00 / 0:00:00</span>
             </td>
             <td width="40">
-                <button type="button" id="mute" class="ctrl-button">Mute</button>
+                <button type="button" id="mute" class="ctrl-button">Unmute</button>
             </td>
             <td width="40">
                 <input type="range" id="volume-bar" min="0" max="1" step="0.1" value="1">
@@ -122,49 +144,99 @@
     <button>Jump to</button>
 </form>
 <script>
+  let userName = '';
+  const setUserName = () => {
+    userName = document.getElementById('userNameField').value;
+    document.querySelector('.user-name-screen').style.display = 'none';
+  }
+
   var client_id = Date.now();
+  console.log(`local client id ${client_id}`);
   let videoElem = null;
-  document.querySelector("#ws-id").textContent = client_id;
   var ws = new WebSocket(`ws://${location.host}/ws/${client_id}`);
+
+  let initialStatusReceived = false;
+
+  const ACTION_PLAY = 'play';
+  const ACTION_SEEKTO = 'seekto';
+  const ACTION_PAUSE = 'pause';
+  const ACTION_REQUEST_STATUS = 'request_status';
+  const ACTION_SEND_STATUS = 'send_status';
+
+  const hideLoadingScreen = () => {
+    document.querySelector('.loading-screen').style.display = 'none';
+    document.querySelector('.user-name-screen').style.display = 'block';
+  }
 
   ws.onmessage = function(event) {
     message = JSON.parse(event.data);
-    console.log(message);
-    // if (message.client_id === client_id) {
-    //   console.log('ignoring own message');
-    //   return;
-    // }
-    // message from another client
+    console.log(event.data);
+
     if (videoElem === null) {
       alert('got message, but video player not initialized!');
       return;
     }
 
-    if (message.data.action === 'play') {
-      videoElem.play();
-    }
-    if (message.data.action === 'seekto') {
-      const {pauseAfterSeek} = message.data;
+    const action = message.data.action;
 
-      videoElem.currentTime = message.data.currentTime;
-      if (pauseAfterSeek) {
-        videoElem.pause();
-      } else {
+    switch (action) {
+      case ACTION_PLAY:
+        videoElem.currentTime = message.data.currentTime;
         videoElem.play();
-      }
-    }
-    if (message.data.action === 'pause') {
-      videoElem.pause();
+        break;
+      case ACTION_SEEKTO:
+        const {pauseAfterSeek} = message.data;
+
+        videoElem.currentTime = message.data.currentTime;
+        if (pauseAfterSeek) {
+          videoElem.pause();
+        } else {
+          videoElem.play();
+        }
+        break;
+      case ACTION_PAUSE:
+        videoElem.pause();
+        break;
+      case ACTION_REQUEST_STATUS:
+        // respond to status requests
+        if (initialStatusReceived) {
+          sendStatus(videoElem.currentTime, !videoElem.paused);
+        }
+        break;
+      case ACTION_SEND_STATUS:
+        if (!initialStatusReceived) {
+          initialStatusReceived = true;
+          hideLoadingScreen();
+          videoElem.currentTime = message.data.currentTime
+          if (message.data.playing) {
+            videoElem.play();
+          }
+        }
+        break;
+      default:
+        console.error(`unknown message action ${action}`)
     }
   };
 
-  const sendMsg = (action, data = {}) => ws.send(JSON.stringify({action, currentTime: videoElem.currentTime, ...data}));
-  const sendPause = () => sendMsg('pause');
-  const sendPlay = () => sendMsg('play');
-  const sendSeekTo = (position, pauseAfterSeek) => sendMsg('seekto', {currentTime: position, pauseAfterSeek});
+  const sendMsg = (action, data = {}) => ws.send(JSON.stringify({action, userName, currentTime: videoElem.currentTime, ...data}));
+  const sendPause = () => sendMsg(ACTION_PAUSE);
+  const sendPlay = (position) => sendMsg(ACTION_PLAY, {currentTime: position});
+  const sendSeekTo = (position, pauseAfterSeek) => sendMsg(ACTION_SEEKTO, {currentTime: position, pauseAfterSeek});
+  const sendRequestStatus = () => sendMsg(ACTION_REQUEST_STATUS);
+  const sendStatus = (position, playing) => sendMsg(ACTION_SEND_STATUS, {position, playing});
+
 
   window.onload = function() {
     videoElem = document.querySelector('#video');
+
+    // request play status from other members
+    sendRequestStatus();
+    window.setTimeout(() => {
+      // if nobody responds within a second, assume we're the only ones and mark
+      // this player as initialized
+      initialStatusReceived = true;
+      hideLoadingScreen();
+    }, 1000);
 
     // hook up video player controls
     // we cannot use the internal controls, since we cannot hook up any click
@@ -193,7 +265,7 @@
 
     const togglePlayPause = () => {
       if (video.paused === true) {
-        sendPlay();
+        sendPlay(video.currentTime);
       } else {
         sendPause();
       }

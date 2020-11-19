@@ -10,9 +10,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import Headers, URL
-from starlette.responses import Response, FileResponse, StreamingResponse, PlainTextResponse, \
+from starlette.responses import Response, StreamingResponse, PlainTextResponse, \
     RedirectResponse
-from starlette.staticfiles import NotModifiedResponse
 from starlette.types import Scope
 
 app = FastAPI()
@@ -60,7 +59,6 @@ class StreamedStaticFiles(StaticFiles):
             "Content-Length": str(num_bytes_read),
             "Content-Range": F"bytes {req_start_bytes}-{end_bytes-1}/{file_size}",
         }
-        # print(response_headers)
         return StreamingResponse(b, media_type="video/mp4", status_code=206, headers=response_headers)
 
     async def get_response(self, path: str, scope: Scope) -> Response:
@@ -142,7 +140,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int):
         while True:
             data = await websocket.receive_text()
             # await manager.send_personal_message(f"You wrote: {data}", websocket)
-            await manager.broadcast(json.dumps({'client_id': client_id, 'data': json.loads(data)}))
+            message = json.loads(data)
+            await manager.broadcast(json.dumps({'client_id': client_id, 'data': message}))
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         await manager.broadcast(f"Client #{client_id} left the chat")
