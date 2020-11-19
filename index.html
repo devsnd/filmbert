@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
     <title>Title</title>
     <style>
         html, body {
@@ -148,6 +149,7 @@
   const setUserName = () => {
     userName = document.getElementById('userNameField').value;
     document.querySelector('.user-name-screen').style.display = 'none';
+    init();
   }
 
   var client_id = Date.now();
@@ -163,9 +165,25 @@
   const ACTION_REQUEST_STATUS = 'request_status';
   const ACTION_SEND_STATUS = 'send_status';
 
+  const show = (selector) => {
+    document.querySelector(selector).style.display = 'block';
+  }
+  const hide = (selector) => {
+    document.querySelector(selector).style.display = 'none';
+  }
+
   const hideLoadingScreen = () => {
     document.querySelector('.loading-screen').style.display = 'none';
     document.querySelector('.user-name-screen').style.display = 'block';
+  }
+
+  const notifyAction = (userName, action) => {
+    Toastify({
+      text: `${userName} ${action}`,
+      duration: 3000,
+      gravity: "top", // `top` or `bottom`
+      position: 'left', // `left`, `center` or `right`
+    }).showToast();
   }
 
   ws.onmessage = function(event) {
@@ -178,13 +196,16 @@
     }
 
     const action = message.data.action;
+    const userName = message.data.userName;
 
     switch (action) {
       case ACTION_PLAY:
+        notifyAction(userName, 'pressed play');
         videoElem.currentTime = message.data.currentTime;
         videoElem.play();
         break;
       case ACTION_SEEKTO:
+        notifyAction(userName, 'jumped to another position');
         const {pauseAfterSeek} = message.data;
 
         videoElem.currentTime = message.data.currentTime;
@@ -195,9 +216,11 @@
         }
         break;
       case ACTION_PAUSE:
+        notifyAction(userName, 'pressed pause');
         videoElem.pause();
         break;
       case ACTION_REQUEST_STATUS:
+        notifyAction(userName, 'joined');
         // respond to status requests
         if (initialStatusReceived) {
           sendStatus(videoElem.currentTime, !videoElem.paused);
@@ -206,7 +229,6 @@
       case ACTION_SEND_STATUS:
         if (!initialStatusReceived) {
           initialStatusReceived = true;
-          hideLoadingScreen();
           videoElem.currentTime = message.data.currentTime
           if (message.data.playing) {
             videoElem.play();
@@ -218,25 +240,50 @@
     }
   };
 
-  const sendMsg = (action, data = {}) => ws.send(JSON.stringify({action, userName, currentTime: videoElem.currentTime, ...data}));
+  const preOpenMessageQueue = [];
+  const sendMsg = (action, data = {}) => {
+    let time = null;
+    try {
+      time = videoElem.currentTime;
+    } catch (e) {
+      // pass
+    }
+    const message = JSON.stringify({action, userName, currentTime: time, ...data});
+    if (ws.readyState === ws.OPEN) {
+      ws.send(message);
+    } else {
+      console.error(`Error sending message ${message} on websocket in state ${ws.readyState}, postponing sending to later`);
+      preOpenMessageQueue.push(message)
+      ws.onopen = () => {
+        for (const msg of preOpenMessageQueue) {
+          ws.send(msg);
+        }
+      }
+    }
+  }
   const sendPause = () => sendMsg(ACTION_PAUSE);
   const sendPlay = (position) => sendMsg(ACTION_PLAY, {currentTime: position});
   const sendSeekTo = (position, pauseAfterSeek) => sendMsg(ACTION_SEEKTO, {currentTime: position, pauseAfterSeek});
   const sendRequestStatus = () => sendMsg(ACTION_REQUEST_STATUS);
   const sendStatus = (position, playing) => sendMsg(ACTION_SEND_STATUS, {position, playing});
 
+  let startedInit = false;
+  const init = () => {
+    if (!startedInit) {
+      startedInit = true;
+      // request play status from other members
+      sendRequestStatus();
+      window.setTimeout(() => {
+        // if nobody responds within a second, assume we're the only ones and mark
+        // this player as initialized
+        initialStatusReceived = true;
+      }, 1000);
+    }
+  }
 
   window.onload = function() {
+    hideLoadingScreen();
     videoElem = document.querySelector('#video');
-
-    // request play status from other members
-    sendRequestStatus();
-    window.setTimeout(() => {
-      // if nobody responds within a second, assume we're the only ones and mark
-      // this player as initialized
-      initialStatusReceived = true;
-      hideLoadingScreen();
-    }, 1000);
 
     // hook up video player controls
     // we cannot use the internal controls, since we cannot hook up any click
@@ -353,5 +400,6 @@
     });
   }
 </script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
 </body>
 </html>
