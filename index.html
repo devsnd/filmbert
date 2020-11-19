@@ -110,12 +110,12 @@
 </div>
 <div class="overlay user-name-screen" style="display: none; opacity: 0.8;">
     Please enter your name:<br>
-    <input type="text" id="userNameField"><br>
+    <input type="text" id="userNameField" value="Dummbert"><br>
     <button  type="button" onclick="setUserName()">Ok</button>
 </div>
 <span style="display: none;">Your ID: <span id="ws-id"></span></span>
 <video autobuffer id="video" width="100%" muted> <!-- mute video to allow autoplay -->
-    <source src="/static/movie.mp4" type="video/mp4" />
+    <source src="[[VIDEO_URL]]" type="video/mp4" />
 </video>
 <!-- Video Controls -->
 <div id="video-controls">
@@ -142,10 +142,7 @@
         </tr>
     </table>
 </div>
-<form action="" onsubmit="seekTo(event)" class="showonhover">
-    <input type="text" id="seekPosition" autocomplete="off"/>
-    <button>Jump to</button>
-</form>
+
 <script>
   let userName = '';
   const setUserName = () => {

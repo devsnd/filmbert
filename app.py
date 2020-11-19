@@ -125,11 +125,13 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 html_index_file = os.path.join(os.path.dirname(__file__), 'index.html')
+video_url = '/static/movie.mp4'
 
 @app.get("/")
 async def get():
     async with aiofiles.open(html_index_file) as fh:
         html = await fh.read()
+        html = html.replace('[[VIDEO_URL]]', video_url)
     return HTMLResponse(html)
 
 
