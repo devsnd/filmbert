@@ -4,6 +4,7 @@ import re
 import stat
 from io import BytesIO
 from typing import List
+import sys
 
 import aiofiles
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -59,7 +60,9 @@ class StreamedStaticFiles(StaticFiles):
             "Content-Length": str(num_bytes_read),
             "Content-Range": F"bytes {req_start_bytes}-{end_bytes-1}/{file_size}",
         }
-        return StreamingResponse(b, media_type="video/mp4", status_code=206, headers=response_headers)
+        if req_start_bytes == 0 and end_bytes == file_size: # this is the whole file
+            status_code = 200
+        return StreamingResponse(b, media_type="video/mp4", status_code=status_code, headers=response_headers)
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         """
@@ -126,12 +129,28 @@ manager = ConnectionManager()
 
 html_index_file = os.path.join(os.path.dirname(__file__), 'index.html')
 video_url = '/static/movie.mp4'
+sub_url = ''
+
+VIDEO_URL = os.environ.get('VIDEO_URL')
+if VIDEO_URL:
+	if VIDEO_URL.startswith('.'):
+		VIDEO_URL = VIDEO_URL[1:]
+	video_url = VIDEO_URL
+
+SUB_URL = os.environ.get('SUB_URL')
+if SUB_URL:
+	if SUB_URL.startswith('.'):
+		SUB_URL = SUB_URL[1:]
+	sub_url = SUB_URL
+
+
 
 @app.get("/")
 async def get():
     async with aiofiles.open(html_index_file) as fh:
         html = await fh.read()
         html = html.replace('[[VIDEO_URL]]', video_url)
+        html = html.replace('[[SUB_URL]]', sub_url)
     return HTMLResponse(html)
 
 
