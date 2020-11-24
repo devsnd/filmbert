@@ -101,12 +101,34 @@
             text-align: center;
             padding-top: 200px;
         }
-
+        #unmute-indicator {
+        	position: fixed;
+			bottom: 80px;
+			right: 10px;
+			background-color: #fff;
+			padding: 10px;
+			border-radius: 10px;
+			opacity: 0.8;
+        }
+        #unmute-indicator:after {
+			content: '';
+			position: absolute;
+			bottom: 0;
+			right: 150px;
+			width: 0;
+			height: 0;
+			border: 20px solid transparent;
+			border-top-color: #fff;
+			border-bottom: 0;
+			border-left: 0;
+			margin-left: -10px;
+			margin-bottom: -20px;
+		}
     </style>
 </head>
 <body>
 <div class="overlay loading-screen">
-    &#8987; Loading Filmbert...
+     &#127909; &#8987; Loading Filmbert...
 </div>
 <div class="overlay user-name-screen" style="display: none; opacity: 0.8;">
     Please enter your name:<br>
@@ -116,8 +138,13 @@
 <span style="display: none;">Your ID: <span id="ws-id"></span></span>
 <video autobuffer id="video" width="100%" muted> <!-- mute video to allow autoplay -->
     <source src="[[VIDEO_URL]]" type="video/mp4" />
+    <track label="English" kind="subtitles" srclang="en" src="[[SUB_URL]]" default>
 </video>
 <!-- Video Controls -->
+<div id="unmute-indicator">
+	Hover at the bottom of the screen to show the controls.<br>
+	<b>Click Unmute to hear something.</b>
+</div>
 <div id="video-controls">
     <table width="100%">
         <tr width="100%">
@@ -302,6 +329,7 @@
     // Buttons
     const playButton = document.getElementById("play-pause");
     const muteButton = document.getElementById("mute");
+    const muteButtonIndicator = document.getElementById("unmute-indicator");
     const fullScreenButton = document.getElementById("full-screen");
 
     // Sliders
@@ -335,12 +363,14 @@
       if (video.muted === false) {
         // Mute the video
         video.muted = true;
+        muteButtonIndicator.style.display = 'block';
 
         // Update the button text
         muteButton.innerHTML = "Unmute";
       } else {
         // Unmute the video
         video.muted = false;
+        muteButtonIndicator.style.display = 'none';
 
         // Update the button text
         muteButton.innerHTML = "Mute";
