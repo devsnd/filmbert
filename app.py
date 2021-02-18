@@ -20,6 +20,10 @@ app = FastAPI()
 class StreamedStaticFiles(StaticFiles):
     default_chunk_size = 1000 * 1024
 
+    def __init__(self, *args, chunk_size=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.chunk_size = chunk_size or self.default_chunk_size
+
     async def file_response(
             self,
             full_path: str,
@@ -33,7 +37,7 @@ class StreamedStaticFiles(StaticFiles):
         range_request = request_headers.get('range')
 
         req_start_bytes = 0
-        chunk_size = self.default_chunk_size
+        chunk_size = self.chunk_size
 
         if range_request:
             range_match = re.match('bytes=(\d+)-(\d*)', range_request)
