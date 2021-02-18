@@ -104,7 +104,13 @@ class StreamedStaticFiles(StaticFiles):
 
         return PlainTextResponse("Not Found", status_code=404)
 
-app.mount("/static", StreamedStaticFiles(directory="static"), name="static")
+VIDEO_CHUNK_SIZE = os.environ.get('VIDEO_CHUNK_SIZE')
+if VIDEO_CHUNK_SIZE:
+    VIDEO_CHUNK_SIZE = int(VIDEO_CHUNK_SIZE)
+else:
+    VIDEO_CHUNK_SIZE = 1000 * 1024
+
+app.mount("/static", StreamedStaticFiles(directory="static", chunk_size=VIDEO_CHUNK_SIZE), name="static")
 
 
 class ConnectionManager:
