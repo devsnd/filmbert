@@ -17,10 +17,15 @@
 
 
         #video-container {
-            width: 640px;
-            height: 365px;
+            width: 100%
             position: relative;
         }
+        #video {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
         #video-controls:hover {
             opacity: 1;
         }
@@ -136,10 +141,12 @@
     <button  type="button" onclick="setUserName()">Ok</button>
 </div>
 <span style="display: none;">Your ID: <span id="ws-id"></span></span>
-<video autobuffer id="video" width="100%" muted> <!-- mute video to allow autoplay -->
-    <source src="[[VIDEO_URL]]" type="video/mp4" />
-    <track label="English" kind="subtitles" srclang="en" src="[[SUB_URL]]" default>
-</video>
+<div id="video-container">
+    <video autobuffer id="video" width="100%" muted> <!-- mute video to allow autoplay -->
+        <source src="[[VIDEO_URL]]" type="video/mp4" />
+        <track label="English" kind="subtitles" srclang="en" src="[[SUB_URL]]" default>
+    </video>
+</div>
 <!-- Video Controls -->
 <div id="unmute-indicator">
 	Hover at the bottom of the screen to show the controls.<br>
