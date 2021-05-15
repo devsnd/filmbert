@@ -1,3 +1,4 @@
+#!/bin/env python3
 import json
 import os
 import re
@@ -143,16 +144,15 @@ sub_url = ''
 
 VIDEO_URL = os.environ.get('VIDEO_URL')
 if VIDEO_URL:
-	if VIDEO_URL.startswith('.'):
-		VIDEO_URL = VIDEO_URL[1:]
-	video_url = VIDEO_URL
+    if VIDEO_URL.startswith('.'):
+        VIDEO_URL = VIDEO_URL[1:]
+    video_url = VIDEO_URL
 
 SUB_URL = os.environ.get('SUB_URL')
 if SUB_URL:
-	if SUB_URL.startswith('.'):
-		SUB_URL = SUB_URL[1:]
-	sub_url = SUB_URL
-
+    if SUB_URL.startswith('.'):
+        SUB_URL = SUB_URL[1:]
+    sub_url = SUB_URL
 
 
 @app.get("/")
@@ -176,3 +176,33 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         await manager.broadcast(f"Client #{client_id} left the chat")
+
+
+def parse_arg(argname, default):
+    import sys
+    try:
+        return sys.argv[sys.argv.index(argname) + 1]
+    except (KeyError, ValueError) as e:
+        return default
+
+
+if __name__ == '__main__':
+    import uvicorn
+    import os
+    port = int(parse_arg('--port', 8080))
+    host = parse_arg('--host', '0.0.0.0')
+    
+    video = parse_arg('--video', './static/movie.mp4')
+    if not os.path.exists(video):
+        print(f'File {video} does not exist')
+        sys.exit(1)
+    os.environ['VIDEO_URL'] = video
+
+    subtitle = parse_arg('--subtitle', '')
+    if subtitle and not os.path.exists(subtitle):
+        print(f'File {subtitle} does not exist')
+        sys.exit(1)
+    os.environ['SUB_URL'] = subtitle
+    
+    print(f'Serving "{video}" with subtitle "{subtitle}"')
+    uvicorn.run("app:app", port=port, host=host, reload=False, access_log=True)
